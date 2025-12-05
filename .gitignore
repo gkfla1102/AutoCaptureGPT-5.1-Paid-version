@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+build/
+dist/
+storage/api_key.json
+storage/chat_history.json
