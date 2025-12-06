@@ -153,6 +153,7 @@ class ChatBubble(QWidget):
 
         # ----- 텍스트 영역 -----
         self.text_label = QLabel()   # ← ★★★★★ 핵심
+        self.text_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.text_label.setWordWrap(True)
         self.text_label.setStyleSheet("""
             QLabel {
