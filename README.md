@@ -1,5 +1,6 @@
 AutoCaptureGPT-5.1 v1.0.0 (2025-12-05)
 
+0. **Payment** (min 5$~) : **https://platform.openai.com/settings/organization/billing/overview**
 0. Get your **ChatGPT API key: https://platform.openai.com/api-keys**
 1. **Enter**: Sends an automatic full-screen screenshot together with the typed message (or leave the message blank).
 2. **Ctrl + Enter**: Sends only the message, without capturing the screen.
