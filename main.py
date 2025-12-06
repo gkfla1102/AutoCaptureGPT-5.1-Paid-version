@@ -64,9 +64,9 @@ def today_str():
     from datetime import datetime
     return datetime.now().strftime("%Y-%m-%d")
 
-def format_korean_date(date_str):
+def format_date(date_str):
     y, m, d = date_str.split("-")
-    return f"{y}년 {int(m)}월 {int(d)}일"
+    return f"{y}-{m}-{d}"
 
 #--------------------------
 # 이미지 붙여넣기 기능
@@ -87,14 +87,14 @@ class ChatInputBox(QTextEdit):
 class ApiKeyDialog(QDialog):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("API Key 설정")
+        self.setWindowTitle("API Key Setting")
         self.resize(350, 150)
 
         layout = QVBoxLayout()
-        label = QLabel("OpenAI API Key 입력:")
+        label = QLabel("Input OpenAI API Key:")
         self.edit = QLineEdit()
         self.edit.setEchoMode(QLineEdit.Password)
-        btn = QPushButton("저장")
+        btn = QPushButton("Save")
         btn.clicked.connect(self.save_key)
 
         layout.addWidget(label)
@@ -142,62 +142,65 @@ class ChatBubble(QWidget):
     def __init__(self, text="", is_user=False, image_b64=None, timestamp=""):
         super().__init__()
 
-        layout = QVBoxLayout()
+        outer = QVBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(3)
+
         bubble = QWidget()
         bubble_layout = QVBoxLayout()
         bubble_layout.setContentsMargins(10, 10, 10, 10)
+        bubble_layout.setSpacing(6)
 
-        if text:
-            lbl = QLabel(text)
-            lbl.setWordWrap(True)
-            lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)   # ★ 추가!
-            lbl.setStyleSheet("font-size:12px; color:black;")
-            lbl.setMaximumWidth(230)
-            
-            lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # ----- 텍스트 영역 -----
+        self.text_label = QLabel()   # ← ★★★★★ 핵심
+        self.text_label.setWordWrap(True)
+        self.text_label.setStyleSheet("""
+            QLabel {
+                font-size: 13px;
+                color: black;
+                background: transparent;
+            }
+        """)
+        self.text_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.text_label.setMaximumWidth(260)
+        self.text_label.setText(text or "")
+        bubble_layout.addWidget(self.text_label)
 
-            bubble_layout.addWidget(lbl)
-
+        # ----- 이미지 영역 -----
         if image_b64:
             img = base64_to_image(image_b64)
             qimg = QImage(img.tobytes(), img.width, img.height, QImage.Format_RGB888)
-            pix = QPixmap.fromImage(qimg).scaledToWidth(180)
+            pix = QPixmap.fromImage(qimg).scaledToWidth(180, Qt.SmoothTransformation)
             img_lbl = QLabel()
             img_lbl.setPixmap(pix)
+            img_lbl.setStyleSheet("background: transparent;")
             bubble_layout.addWidget(img_lbl)
 
         bubble.setLayout(bubble_layout)
 
+        wrap = QHBoxLayout()
+        wrap.setContentsMargins(0, 0, 0, 0)
+        wrap.setSpacing(0)
+
         if is_user:
-            bubble.setStyleSheet("""
-                background:#ffe97a;
-                border-radius:10px;
-                border-bottom-right-radius:2px;
-            """)
-            layout.addWidget(bubble, alignment=Qt.AlignRight)
+            bubble.setStyleSheet("background:#ffe97a; border-radius:12px; border-bottom-right-radius:4px;")
+            wrap.addStretch()
+            wrap.addWidget(bubble)
         else:
-            bubble.setStyleSheet("""
-                background:#aee3ff;   /* 밝은 하늘색 */
-                border-radius:10px;
-                border-bottom-left-radius:2px;
-            """)
-            layout.addWidget(bubble, alignment=Qt.AlignLeft)
+            bubble.setStyleSheet("background:#aee3ff; border-radius:12px; border-bottom-left-radius:4px;")
+            wrap.addWidget(bubble)
+            wrap.addStretch()
+
+        outer.addLayout(wrap)
 
         ts = QLabel(timestamp)
-        ts.setStyleSheet("font-size:11px; color:#444;")
-        layout.addWidget(ts,
-                         alignment=(Qt.AlignRight if is_user else Qt.AlignLeft))
+        ts.setStyleSheet("font-size:11px; color:#aaa; padding-left:4px; padding-right:4px;")
+        ts.setAlignment(Qt.AlignRight if is_user else Qt.AlignLeft)
 
-        self.setLayout(layout)
+        outer.addSpacing(2)
+        outer.addWidget(ts)
 
-        # fade 효과
-        self.setWindowOpacity(0)
-        ani = QPropertyAnimation(self, b"windowOpacity")
-        ani.setDuration(150)
-        ani.setStartValue(0)
-        ani.setEndValue(1)
-        ani.start()
-
+        self.setLayout(outer)
 
 # --------------------------------------------------------
 # 메인 윈도우
@@ -270,15 +273,19 @@ class MainWindow(QWidget):
 
         # 채팅 컨테이너
         self.chat_container = QWidget()
-        self.chat_container.setStyleSheet("background-color: black;")  # ★ 배경을 까맣게
-        
+        self.chat_container.setStyleSheet("background-color: black;")
+
         self.chat_container.setSizePolicy(
-            QSizePolicy.Minimum,
-            QSizePolicy.Expanding
+            QSizePolicy.Expanding,
+            QSizePolicy.MinimumExpanding        # 또는 MinimumExpanding도 가능
         )
+
 
         self.chat_layout = QVBoxLayout()
         self.chat_layout.setAlignment(Qt.AlignTop)
+
+        # 여기에 추가!!
+        self.chat_layout.setSpacing(12)
 
         self.chat_container.setLayout(self.chat_layout)
         self.scroll.setWidget(self.chat_container)
@@ -317,7 +324,7 @@ class MainWindow(QWidget):
         self.input.textChanged.connect(self.adjust_input_area)
         self.input.installEventFilter(self)
 
-        self.send_btn = QPushButton("전송")
+        self.send_btn = QPushButton("➤")
         self.send_btn.setFixedWidth(70)
         self.send_btn.setFixedHeight(self.MIN_INPUT_HEIGHT)
         self.send_btn.setStyleSheet("""
@@ -325,7 +332,7 @@ class MainWindow(QWidget):
                 background-color: #ffe97a !important;   /* 기본 노랑 */
                 color: black !important;
                 border-radius: 6px;
-                font-size: 15px;
+                font-size: 24px;
                 font-weight: bold;
                 border: none;
             }
@@ -387,7 +394,7 @@ class MainWindow(QWidget):
             self.last_date = None
 
         if self.last_date != date_str:
-            sep = DateSeparator(format_korean_date(date_str))
+            sep = DateSeparator(format_date(date_str))
             self.chat_layout.addWidget(sep)
             self.last_date = date_str
 
@@ -414,8 +421,10 @@ class MainWindow(QWidget):
             json.dump(history, f, indent=2, ensure_ascii=False)
 
     # 대화 불러오기
+    
     def load_chat_history(self):
-        if not os.path.exists(self.history_path): return
+        if not os.path.exists(self.history_path):
+            return
 
         try:
             with open(self.history_path, "r", encoding="utf-8") as f:
@@ -423,12 +432,20 @@ class MainWindow(QWidget):
         except:
             return
 
+        history.sort(key=lambda x: (x["date"], x["timestamp"]))
+
         for entry in history:
-            self.add_date_separator_if_needed(entry.get("date", today_str()))
+            date = entry["date"]
+            ts = entry["timestamp"]
+
+            self.add_date_separator_if_needed(date)
+
             if entry["role"] == "user":
-                self.add_user_bubble(entry["text"], entry.get("img"))
+                bubble = ChatBubble(entry["text"], True, entry.get("img"), ts)
             else:
-                self.add_gpt_bubble(entry["text"])
+                bubble = ChatBubble(entry["text"], False, None, ts)
+
+            self.chat_layout.addWidget(bubble)
 
     # 엔터키 처리
     def eventFilter(self, obj, event):
@@ -456,19 +473,19 @@ class MainWindow(QWidget):
 
     # 말풍선
     def add_user_bubble(self, text, img_b64=None):
-        self.add_date_separator_if_needed(today_str())
+        date = today_str()               # 메시지의 실제 날짜(저장용)
+        self.add_date_separator_if_needed(date)
         bubble = ChatBubble(text, True, img_b64, now_timestamp())
         self.chat_layout.addWidget(bubble)
-        
-        QTimer.singleShot(0, self.scroll_bottom)   # ★ 여기로 교체
+
+        QTimer.singleShot(0, self.scroll_bottom)
 
 
-    def add_gpt_bubble(self, text):
-        self.add_date_separator_if_needed(today_str())
+    def add_gpt_bubble(self, text, date):
+        self.add_date_separator_if_needed(date)
         bubble = ChatBubble(text, False, None, now_timestamp())
         self.chat_layout.addWidget(bubble)
-
-        QTimer.singleShot(0, self.scroll_bottom)   # ★ 여기로 교체
+        QTimer.singleShot(0, self.scroll_bottom)
 
     # GPT typing 표시
     def add_typing(self):
@@ -495,15 +512,27 @@ class MainWindow(QWidget):
         self.input.clear()
         self.adjust_input_area()
 
+        # 사용자 말풍선 추가
         self.add_user_bubble(text)
         self.save_chat_history("user", text, None)
 
-        self.add_typing()
-        res = self.gpt.send_message(text)
-        self.remove_typing()
+        # ★ GPT 말풍선을 빈 상태로 먼저 생성
+        gpt_bubble = ChatBubble("", False, None, now_timestamp())
+        self.chat_layout.addWidget(gpt_bubble)
+        self.scroll_bottom()
 
-        self.add_gpt_bubble(res)
-        self.save_chat_history("assistant", res, None)
+        # ★ 스트리밍 콜백 (GPT가 글자 보낼 때마다 실행됨)
+        def on_delta(text_chunk):
+            current = gpt_bubble.text_label.text()
+            gpt_bubble.text_label.setText(current + text_chunk)
+            self.scroll_bottom()
+
+        # ★ GPT 스트리밍 호출
+        res = self.gpt.send_message(text, on_delta=on_delta)
+
+        # 대화 저장
+        self.save_chat_history("assistant", full_text, None)
+
 
     # 캡처 포함 전송
     def send_with_capture(self):
@@ -517,15 +546,34 @@ class MainWindow(QWidget):
         )
         img_b64 = image_to_base64(img)
 
+        # 사용자 말풍선
         self.add_user_bubble(text, img_b64)
         self.save_chat_history("user", text, img_b64)
 
-        self.add_typing()
-        res = self.gpt.send_message(text, img_b64)
-        self.remove_typing()
+        # ★ GPT 말풍선을 비어 있는 상태로 먼저 생성
+        gpt_bubble = ChatBubble("", False, None, now_timestamp())
+        self.chat_layout.addWidget(gpt_bubble)
+        self.scroll_bottom()
 
-        self.add_gpt_bubble(res)
-        self.save_chat_history("assistant", res, None)
+        # ★ 스트리밍 콜백
+        full_text = ""   # 스트리밍 전체 내용 저장용 변수
+
+        def on_delta(text_chunk):
+            nonlocal full_text
+            if not text_chunk:   # None 또는 "" 모두 무시
+                return
+            full_text += text_chunk
+
+            current = gpt_bubble.text_label.text()
+            gpt_bubble.text_label.setText(current + text_chunk)
+            self.scroll_bottom()
+
+        # ★ GPT 스트리밍 호출
+        res = self.gpt.send_message(text, img_b64, on_delta=on_delta)
+
+        # 전체 결과 저장
+        self.save_chat_history("assistant", full_text, None)
+
 
 
 

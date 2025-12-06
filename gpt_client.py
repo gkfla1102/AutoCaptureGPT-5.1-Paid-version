@@ -2,8 +2,11 @@ from openai import OpenAI
 from utils import load_json
 
 # 요청한 프롬프트 그대로 반영
-SYSTEM_PROMPT = "전체 360자 이내로 쉽게, 비유나 예시를 들어서 핵심을 말해주세요."
-
+SYSTEM_PROMPT = (
+    "Keep everything within 360 characters, explain simply with metaphors or examples, "
+    "focus on the core idea, and always respond in the user's input language, "
+    "regardless of previous conversation history."
+)
 class GPTClient:
 
     def __init__(self):
@@ -18,7 +21,8 @@ class GPTClient:
         self.max_history = 10   # 최근 10개 유지
 
 
-    def send_message(self, text="", image_b64=None):
+    def send_message(self, text="", image_b64=None, on_delta=None):
+
         """사용자가 보낸 메시지를 GPT에게 전달하고 히스토리를 유지"""
 
         # 1) 사용자 메시지(history에 저장할 형태로 구성)
@@ -70,6 +74,9 @@ class GPTClient:
                 delta = chunk.choices[0].delta
                 if hasattr(delta, "content") and delta.content:
                     full += delta.content
+                    if on_delta:
+                        on_delta(delta.content)
+
 
         # 7) GPT 답변도 history에 저장
         self.history.append({
