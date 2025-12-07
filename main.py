@@ -25,7 +25,8 @@ from PySide6.QtCore import QTimer
 from PIL import Image
 
 
-DEFAULT_SYSTEM_PROMPT = """Explain the key points in an easy way using analogies and examples. Respond in the user’s language."""
+DEFAULT_SYSTEM_PROMPT = """Explain the key points in an easy way using analogies and examples. Respond in the user’s language.
+"""
 
 class SystemPromptDialog(QDialog):
     def __init__(self, parent=None):
@@ -190,7 +191,8 @@ class ChatBubble(QWidget):
                 background: transparent;
             }
         """)
-        self.text_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.text_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.text_label.setWordWrap(True)
         self.text_label.setMaximumWidth(260)
         self.text_label.setText(text or "")
         bubble_layout.addWidget(self.text_label)
@@ -281,8 +283,18 @@ class MainWindow(QWidget):
         # 스크롤 영역
         # --------------------------------------------------------
         self.scroll = QScrollArea()  # ★ 반드시 있어야 함
-        self.scroll.setWidgetResizable(True)
+        
+        self.chat_container = QWidget()
+        self.chat_container.setStyleSheet("background-color: black;")
+        
+        self.scroll.setWidgetResizable(True)  # 이미 있을 가능성 있음
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        # 내부 위젯 크기를 viewport에 강제로 맞추기
+        self.chat_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.chat_container.adjustSize()
+
+        self.chat_container.setMinimumWidth(self.scroll.viewport().width())
 
         # 스크롤바 스타일
         self.scroll.setStyleSheet("""
@@ -315,26 +327,23 @@ class MainWindow(QWidget):
         """)
 
         # 채팅 컨테이너
-        self.chat_container = QWidget()
-        self.chat_container.setStyleSheet("background-color: black;")
 
         self.chat_container.setSizePolicy(
             QSizePolicy.Expanding,
-            QSizePolicy.MinimumExpanding        # 또는 MinimumExpanding도 가능
+            QSizePolicy.MinimumExpanding
         )
-
 
         self.chat_layout = QVBoxLayout()
         self.chat_layout.setAlignment(Qt.AlignTop)
-
-        # 여기에 추가!!
         self.chat_layout.setSpacing(12)
 
         self.chat_container.setLayout(self.chat_layout)
         self.scroll.setWidget(self.chat_container)
 
-        # ★ 여기 추가!!
-        self.chat_container.installEventFilter(self)
+        # ★ 여기! 정확히 여기!
+        self.chat_container.setMinimumWidth(self.scroll.viewport().width())
+        self.chat_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.chat_container.adjustSize()
 
         layout.addWidget(self.scroll)
 
@@ -659,6 +668,12 @@ class MainWindow(QWidget):
         # 저장
         self.save_chat_history("assistant", full_text, None)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        for i in range(self.chat_layout.count()):
+            w = self.chat_layout.itemAt(i).widget()
+            if isinstance(w, ChatBubble):
+                w.setMaximumWidth(self.scroll.viewport().width() * 0.9)
 
 # --------------------------------------------------------
 # 실행

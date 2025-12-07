@@ -4,3 +4,4 @@ build/
 dist/
 storage/api_key.json
 storage/chat_history.json
+storage/system_prompt.json

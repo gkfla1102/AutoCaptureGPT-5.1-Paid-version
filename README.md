@@ -23,3 +23,4 @@ AutoCaptureGPT-5.1 v1.1.0 (2025-12-06)
 AutoCaptureGPT-5.1 v.1.2.0 (2025-12-07)
 
 1. Added - **Ctrl + P**: You can **set the AI’s basic rules**, such as how it should respond, how long the answers should be, and which language it should use.
+2. Fixed an issue where the user’s chat bubble was getting cut off on the right when the window was resized. 
