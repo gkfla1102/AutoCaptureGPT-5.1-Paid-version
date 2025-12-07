@@ -1,12 +1,13 @@
 from openai import OpenAI
 from utils import load_json
 
-# 요청한 프롬프트 그대로 반영
-SYSTEM_PROMPT = (
-    "Keep everything within 360 characters, explain simply with metaphors or examples, "
-    "focus on the core idea, and always respond in the user's input language, "
-    "regardless of previous conversation history."
-)
+# 시스템 프롬프트 불러오기 함수
+def load_system_prompt():
+    txt = load_json("storage/system_prompt.json")
+    if txt and txt.strip():
+        return txt
+    return "기본 시스템 프롬프트가 비어 있습니다."
+
 class GPTClient:
 
     def __init__(self):
@@ -23,9 +24,7 @@ class GPTClient:
 
     def send_message(self, text="", image_b64=None, on_delta=None):
 
-        """사용자가 보낸 메시지를 GPT에게 전달하고 히스토리를 유지"""
-
-        # 1) 사용자 메시지(history에 저장할 형태로 구성)
+        # 1) 사용자 메시지 만들기
         if image_b64:
             user_message = {
                 "role": "user",
@@ -45,29 +44,26 @@ class GPTClient:
                 "content": text
             }
 
-        # 2) 사용자 메시지 history에 저장
+        # 2) history 저장
         self.history.append(user_message)
 
-        # 3) 최근 10개만 유지
         if len(self.history) > self.max_history:
             self.history = self.history[-self.max_history:]
 
-
-        # 4) GPT에 보낼 메시지 구성
+        # 3) 전체 메시지 준비
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT}
+            {"role": "system", "content": load_system_prompt()}
         ]
-        messages += self.history   # 맥락 포함
+        messages += self.history
 
-
-        # 5) GPT 스트리밍 호출
+        # 4) GPT 스트리밍 요청
         stream = self.client.chat.completions.create(
             model="gpt-5.1",
             messages=messages,
             stream=True
         )
 
-        # 6) 스트리밍 모아서 하나의 문자열로
+        # 5) 스트리밍 받기
         full = ""
         for chunk in stream:
             if chunk.choices:
@@ -77,14 +73,11 @@ class GPTClient:
                     if on_delta:
                         on_delta(delta.content)
 
-
-        # 7) GPT 답변도 history에 저장
+        # 6) assistant 답변도 히스토리에 저장
         self.history.append({
             "role": "assistant",
             "content": full
         })
-
-        # 8) 다시 10개 유지
         if len(self.history) > self.max_history:
             self.history = self.history[-self.max_history:]
 

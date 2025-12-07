@@ -25,6 +25,34 @@ from PySide6.QtCore import QTimer
 from PIL import Image
 
 
+DEFAULT_SYSTEM_PROMPT = """Explain the key points in an easy way using analogies and examples. Respond in the user’s language."""
+
+class SystemPromptDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Edit System Prompt")
+        self.resize(400, 250)
+
+        layout = QVBoxLayout()
+
+        self.edit = QTextEdit()
+        saved = load_json("storage/system_prompt.json")
+        if not saved or saved.strip() == "":
+            saved = DEFAULT_SYSTEM_PROMPT
+        self.edit.setPlainText(saved)
+
+        layout.addWidget(self.edit)
+
+        btn = QPushButton("Save")
+        btn.clicked.connect(self.save_prompt)
+        layout.addWidget(btn)
+
+        self.setLayout(layout)
+
+    def save_prompt(self):
+        text = self.edit.toPlainText()
+        save_json("storage/system_prompt.json", text)
+        self.accept()
 
 
 def enable_blur(hwnd):
@@ -210,7 +238,21 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
 
+        self.setFocusPolicy(Qt.StrongFocus)
+
         self.gpt = GPTClient()
+        # storage 폴더 생성
+        if not os.path.exists("storage"):
+            os.makedirs("storage")
+
+        # system_prompt.json 자동 생성 + 기본값 채우기
+        prompt_path = "storage/system_prompt.json"
+        if not os.path.exists(prompt_path):
+            save_json(prompt_path, DEFAULT_SYSTEM_PROMPT)
+        else:
+            saved = load_json(prompt_path)
+            if not saved or saved.strip() == "":
+                save_json(prompt_path, DEFAULT_SYSTEM_PROMPT)
 
         self.setWindowTitle("AutoCaptureGPT")
         self.resize(360, 600)
@@ -291,6 +333,9 @@ class MainWindow(QWidget):
         self.chat_container.setLayout(self.chat_layout)
         self.scroll.setWidget(self.chat_container)
 
+        # ★ 여기 추가!!
+        self.chat_container.installEventFilter(self)
+
         layout.addWidget(self.scroll)
 
         # --------------------------------------------------------
@@ -356,7 +401,66 @@ class MainWindow(QWidget):
         # 대화 불러오기
         self.load_chat_history()
 
+    def keyPressEvent(self, event):
+        # Ctrl+P → 시스템 프롬프트 열기
+        if (event.modifiers() & Qt.ControlModifier) and event.key() == Qt.Key_P:
+            self.open_system_prompt_editor()
+            return
+        super().keyPressEvent(event)
 
+
+
+
+    def keyPressEvent(self, event):
+        if (event.modifiers() & Qt.ControlModifier) and event.key() == Qt.Key_P:
+            self.open_system_prompt_editor()
+            return
+        super().keyPressEvent(event)
+
+    # 캡처 포함 전송
+    def send_with_capture(self):
+        text = self.input.toPlainText().strip()
+        self.input.clear()
+        self.adjust_input_area()
+
+        img = capture_full_screen(
+            hide=lambda: self.hide(),
+            show=lambda: self.show()
+        )
+        img_b64 = image_to_base64(img)
+
+        # 사용자 말풍선
+        self.add_user_bubble(text, img_b64)
+        self.save_chat_history("user", text, img_b64)
+
+        # GPT 말풍선 생성
+        gpt_bubble = ChatBubble("", False, None, now_timestamp())
+        self.chat_layout.addWidget(gpt_bubble)
+        self.scroll_bottom()
+
+        # 스트리밍 내용 저장 변수
+        full_text = ""
+
+        # 스트리밍 콜백
+        def on_delta(ch):
+            nonlocal full_text
+            if not ch:
+                return
+            full_text += ch
+            gpt_bubble.text_label.setText(full_text)
+            self.scroll_bottom()
+
+        # GPT 호출
+        self.gpt.send_message(text, img_b64, on_delta=on_delta)
+
+        # 저장
+        self.save_chat_history("assistant", full_text, None)
+
+
+
+    def open_system_prompt_editor(self):
+        dlg = SystemPromptDialog(self)
+        dlg.exec()
 
     #붙여넣기 이미지 처리 함수
 
@@ -450,6 +554,22 @@ class MainWindow(QWidget):
 
     # 엔터키 처리
     def eventFilter(self, obj, event):
+
+        # self.input이 아직 없을 때 에러 방지
+        if not hasattr(self, "input"):
+            return super().eventFilter(obj, event)
+
+        # ----------------------------
+        # Ctrl + P → 시스템 프롬프트 편집창
+        # ----------------------------
+        if obj == self.input and event.type() == QEvent.KeyPress:
+            if (event.modifiers() & Qt.ControlModifier) and event.key() == Qt.Key_P:
+                self.open_system_prompt_editor()
+                return True
+
+        # ----------------------------
+        # Enter 처리
+        # ----------------------------
         if obj == self.input and event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Return:
 
@@ -505,6 +625,7 @@ class MainWindow(QWidget):
             self.typing.deleteLater()
 
     # 텍스트만 전송
+
     def send_text_only(self):
         text = self.input.toPlainText().strip()
         if not text:
@@ -513,69 +634,30 @@ class MainWindow(QWidget):
         self.input.clear()
         self.adjust_input_area()
 
-        # 사용자 말풍선 추가
+        # 사용자 말풍선
         self.add_user_bubble(text)
         self.save_chat_history("user", text, None)
 
-        # ★ GPT 말풍선을 빈 상태로 먼저 생성
+        # GPT 버블
         gpt_bubble = ChatBubble("", False, None, now_timestamp())
         self.chat_layout.addWidget(gpt_bubble)
         self.scroll_bottom()
 
-        # ★ 스트리밍 콜백 (GPT가 글자 보낼 때마다 실행됨)
-        def on_delta(text_chunk):
-            current = gpt_bubble.text_label.text()
-            gpt_bubble.text_label.setText(current + text_chunk)
-            self.scroll_bottom()
+        # ★ full_text 선언
+        full_text = ""
 
-        # ★ GPT 스트리밍 호출
-        res = self.gpt.send_message(text, on_delta=on_delta)
-
-        # 대화 저장
-        self.save_chat_history("assistant", full_text, None)
-
-
-    # 캡처 포함 전송
-    def send_with_capture(self):
-        text = self.input.toPlainText().strip()
-        self.input.clear()
-        self.adjust_input_area()
-
-        img = capture_full_screen(
-            hide=lambda: self.hide(),
-            show=lambda: self.show()
-        )
-        img_b64 = image_to_base64(img)
-
-        # 사용자 말풍선
-        self.add_user_bubble(text, img_b64)
-        self.save_chat_history("user", text, img_b64)
-
-        # ★ GPT 말풍선을 비어 있는 상태로 먼저 생성
-        gpt_bubble = ChatBubble("", False, None, now_timestamp())
-        self.chat_layout.addWidget(gpt_bubble)
-        self.scroll_bottom()
-
-        # ★ 스트리밍 콜백
-        full_text = ""   # 스트리밍 전체 내용 저장용 변수
-
-        def on_delta(text_chunk):
+        # 스트리밍 콜백
+        def on_delta(ch):
             nonlocal full_text
-            if not text_chunk:   # None 또는 "" 모두 무시
-                return
-            full_text += text_chunk
-
-            current = gpt_bubble.text_label.text()
-            gpt_bubble.text_label.setText(current + text_chunk)
+            full_text += ch
+            gpt_bubble.text_label.setText(full_text)
             self.scroll_bottom()
 
-        # ★ GPT 스트리밍 호출
-        res = self.gpt.send_message(text, img_b64, on_delta=on_delta)
+        # GPT 호출
+        self.gpt.send_message(text, on_delta=on_delta)
 
-        # 전체 결과 저장
+        # 저장
         self.save_chat_history("assistant", full_text, None)
-
-
 
 
 # --------------------------------------------------------
