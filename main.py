@@ -164,6 +164,57 @@ class DateSeparator(QWidget):
         self.setLayout(layout)
 
 
+
+class ImageViewerDialog(QDialog):
+    def __init__(self, pixmap, parent=None):
+        super().__init__(parent)
+
+        # ---- 1) 타이틀바 삭제 + 완전한 프레임리스 ----
+        self.setWindowFlags(
+            Qt.FramelessWindowHint |
+            Qt.WindowStaysOnTopHint |
+            Qt.Popup
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        # ---- 2) 화면 크기 기준 축소 ----
+        screen = QApplication.primaryScreen().availableGeometry()
+        max_w = int(screen.width() * 0.8)
+        max_h = int(screen.height() * 0.8)
+
+        w = pixmap.width()
+        h = pixmap.height()
+
+        if w > max_w or h > max_h:
+            pixmap = pixmap.scaled(
+                max_w, max_h,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+
+        # ---- 3) 이미지 표시 QLabel (배경 없음) ----
+        lbl = QLabel(self)
+        lbl.setPixmap(pixmap)
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("background: transparent;")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(lbl)
+
+        # 창 크기를 이미지에 맞춤
+        self.resize(pixmap.width(), pixmap.height())
+
+        # ---- 4) 화면 정중앙에 창 배치 ----
+        center_x = screen.x() + (screen.width() - self.width()) // 2
+        center_y = screen.y() + (screen.height() - self.height()) // 2
+        self.move(center_x, center_y)
+
+    # 클릭하면 닫힘
+    def mousePressEvent(self, event):
+        self.close()
+
+
 # --------------------------------------------------------
 # 말풍선
 # --------------------------------------------------------
@@ -191,7 +242,7 @@ class ChatBubble(QWidget):
                 background: transparent;
             }
         """)
-        self.text_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.text_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.text_label.setWordWrap(True)
         self.text_label.setMaximumWidth(260)
         self.text_label.setText(text or "")
@@ -204,6 +255,16 @@ class ChatBubble(QWidget):
             pix = QPixmap.fromImage(qimg).scaledToWidth(180, Qt.SmoothTransformation)
             img_lbl = QLabel()
             img_lbl.setPixmap(pix)
+            img_lbl.setStyleSheet("background: transparent;")
+            img_lbl.setCursor(Qt.PointingHandCursor)   # 손 모양 커서
+
+            # 클릭 이벤트 연결
+            def open_viewer():
+                dlg = ImageViewerDialog(QPixmap.fromImage(qimg), self)
+                dlg.exec()
+
+            img_lbl.mousePressEvent = lambda e: open_viewer()
+
             img_lbl.setStyleSheet("background: transparent;")
             bubble_layout.addWidget(img_lbl)
 
@@ -231,8 +292,14 @@ class ChatBubble(QWidget):
         outer.addSpacing(2)
         outer.addWidget(ts)
 
-        self.setLayout(outer)
+        # ★★★★★ 여기! self.setLayout(outer) 바로 위에 추가! ★★★★★
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        bubble.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.text_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
+        self.setLayout(outer)
+        
+        
 # --------------------------------------------------------
 # 메인 윈도우
 # --------------------------------------------------------
@@ -287,14 +354,14 @@ class MainWindow(QWidget):
         self.chat_container = QWidget()
         self.chat_container.setStyleSheet("background-color: black;")
         
+        self.chat_container.setMinimumWidth(1)
+        
         self.scroll.setWidgetResizable(True)  # 이미 있을 가능성 있음
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         # 내부 위젯 크기를 viewport에 강제로 맞추기
         self.chat_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.chat_container.adjustSize()
 
-        self.chat_container.setMinimumWidth(self.scroll.viewport().width())
 
         # 스크롤바 스타일
         self.scroll.setStyleSheet("""
@@ -330,7 +397,7 @@ class MainWindow(QWidget):
 
         self.chat_container.setSizePolicy(
             QSizePolicy.Expanding,
-            QSizePolicy.MinimumExpanding
+            QSizePolicy.Expanding
         )
 
         self.chat_layout = QVBoxLayout()
@@ -341,9 +408,8 @@ class MainWindow(QWidget):
         self.scroll.setWidget(self.chat_container)
 
         # ★ 여기! 정확히 여기!
-        self.chat_container.setMinimumWidth(self.scroll.viewport().width())
         self.chat_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.chat_container.adjustSize()
+        
 
         layout.addWidget(self.scroll)
 
@@ -407,8 +473,7 @@ class MainWindow(QWidget):
         input_layout.addWidget(self.send_btn)
         layout.addLayout(input_layout)
 
-        # 대화 불러오기
-        self.load_chat_history()
+        QTimer.singleShot(0, self.force_refresh_layout)
 
     def keyPressEvent(self, event):
         # Ctrl+P → 시스템 프롬프트 열기
@@ -668,12 +733,13 @@ class MainWindow(QWidget):
         # 저장
         self.save_chat_history("assistant", full_text, None)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        for i in range(self.chat_layout.count()):
-            w = self.chat_layout.itemAt(i).widget()
-            if isinstance(w, ChatBubble):
-                w.setMaximumWidth(self.scroll.viewport().width() * 0.9)
+    def force_refresh_layout(self):
+        self.chat_container.updateGeometry()
+        self.scroll.updateGeometry()
+        self.scroll.repaint()
+   
+
+
 
 # --------------------------------------------------------
 # 실행
@@ -695,5 +761,8 @@ if not key or "api_key" not in key:
 
 win = MainWindow()
 win.show()
+
+QTimer.singleShot(0, win.load_chat_history)
+QTimer.singleShot(0, win.force_refresh_layout)
 
 sys.exit(app.exec())
