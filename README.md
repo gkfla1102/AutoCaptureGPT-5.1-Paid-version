@@ -1,3 +1,12 @@
+If you're going to pay for it, using the **GPT version is a bit better** since the responses render more smoothly.
+But you could **try the Gemini 2.5 Flash version** suggested in this post **for testing** before making a decision.
+
+Edited on 2025-12-07 10:46. : Gemini-2.5-flash free usage reduced from 250 to 20. Google made the change, and it may revert or change again, so we'll have to keep an eye on it.
+
+Get AutoCaptureGemini-2.5-flash : https://github.com/gkfla1102/AutoCaptureGemini-2.5-flash-Free-Plan/releases
+
+----------------------------------------
+
 AutoCaptureGPT-5.1 v1.0.0 (2025-12-05)
 
 0. **Payment** (min 5$~) : **https://platform.openai.com/settings/organization/billing/overview**
